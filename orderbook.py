@@ -17,14 +17,36 @@ class OrderBook:
 
     Attributes:
 
+    Method:
+        order_id
+
     """
     bid_price = []
     bid_size = []
     ask_price = []
     ask_size = []
+    order_num_bid = {}
+    order_num_ask = {}
 
     def __init__(self):
-        pass
+        pass        
+
+    def order_id(self, bid_agent_id, ask_agent_id):
+        """ Create ID numbers for bid/ask order
+            
+            Attributes: bid/ask agent ID []
+            Returns: bid/ask order ID {}
+        """
+        self.bid_agent_id = bid_agent_id
+        self.ask_agent_id = ask_agent_id
+        
+        for idx in range(len(self.bid_agent_id)):
+            self.order_num_bid['b'+str(idx)] = self.bid_agent_id[idx]
+        for idy in range(len(self.ask_agent_id)):
+            self.order_num_ask['a'+str(idy)] = self.ask_agent_id[idy]
+        return(self.order_num_bid, self.order_num_ask)
+
+
 
     def bid(self, bid_price, bid_size):
         self.bid_price = bid_price
