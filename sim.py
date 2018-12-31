@@ -193,7 +193,10 @@ ask_volume_plot_data = [v_ask[1][3] for v_ask in tmp_ask]
 # --- Bid: Market price
 # --- Ask: Limit price
 # --- 
-# --- Find the bid agend ID 
+# --- Find the bid agend ID
+tmp_ask_volume_data = []
+tmp_ask_volume_data = ask_volume_plot_data.copy()
+print(tmp_ask_volume_data)
 for id_bid in range(len(bid_order_id)):
     agent_id = bid_order_id['b'+str(id_bid)] # get bid agent ID
     bid_shares = bid_volume_plot_data[id_bid] * -1.0
@@ -202,11 +205,12 @@ for id_bid in range(len(bid_order_id)):
     tmp_price_shares = 0.0
     tmp_shares = 0.0
     for id_ask in range(len(ask_order_id)):
-        ask_shares = ask_volume_plot_data[id_ask]
+        ask_shares = tmp_ask_volume_data[id_ask]
         ask_price = ask_price_plot_data[id_ask]
-        
+#        print(id_bid, id_ask, bid_shares, ask_shares)
+
         if ask_shares <= 0:
-            break # No share available; move to the next Ask order
+            continue # No share available; move to the next Ask order
         elif (bid_shares-ask_shares) <= 0:
             # Bid order is totally filled at the Ask price
             # store temp number of shares
@@ -217,7 +221,7 @@ for id_bid in range(len(bid_order_id)):
             tmp_shares = tmp_shares + bid_shares
             tmp_price_shares = tmp_price_shares + bid_shares*ask_price
             execution_price = tmp_price_shares / tmp_shares
-            ask_volume_plot_data[id_ask] = ask_shares - bid_shares
+            tmp_ask_volume_data[id_ask] = ask_shares - bid_shares
             realtime_price.append(execution_price)
             break # Move to the next id_bid number of the outer loop
         else: # Multiple Ask orders required to fill the Bid order
@@ -225,17 +229,16 @@ for id_bid in range(len(bid_order_id)):
             tmp_shares = tmp_shares + ask_shares
             tmp_price_shares = tmp_price_shares + ask_shares*ask_price
             bid_shares = bid_shares - ask_shares # new 'bid_shares'; decreasing
-            ask_volume_plot_data[id_ask] = 0.0 # remove shares from current id_ask
+            tmp_ask_volume_data[id_ask] = 0.0 # remove shares from current id_ask
 
-# --- we will loop through each Ask order,
-# --- until the first Bid order is fully filled
-# 
+ 
 for idx in range(len(ask_order_id)):
     agent_id = ask_order_id['a'+str(idx)]
     ask_shares = ask_volume_plot_data[idx]
     ask_price = ask_price_plot_data[idx]
-    print(ask_shares, ask_price)
+#    print(ask_shares, ask_price)
 
+print(realtime_price)
 
 # -----------------------------------------------------------------------------
 # Test plots
@@ -276,6 +279,10 @@ plt.gca().invert_yaxis()
 ax2.yaxis.tick_right() # place y-axis tick on the Right
 plt.xlabel('Volume (shares)')
 plt.title('Bid/Ask Volume', fontsize=15)
+
+plt.figure(2)
+plt.plot(realtime_price)
+
 
 plt.show()
 
