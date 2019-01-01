@@ -1,13 +1,23 @@
 # -----------------------------------------------------------------------------
 # Agent Based Market Simulation
-#
 # Created by: Ta-Wei Chen
 # Date: December 28, 2018
 # Version: 0.1.0
-#
+# 
+# To-do list:
+# 1) Check the capital reserve before executing an order
+# 2) Update the bid/ask capital after the order execution
+# 3) Incoporate risk variable into order matching
+# 4) Incoporate trading style variable into order matching
+# 5) Implement limit order algo for both bid and ask order -- right now
+#    the market order is used for bid
+# 6) Move all the order matching codes into orderbook.py to de-clutter the main
+#    codes
+# 7) Order matching needs to take agent trading characteristics into account
 # -----------------------------------------------------------------------------
 from agent import Agent
 from orderbook import OrderBook
+from statistics import mean
 
 import math
 import random
@@ -55,16 +65,16 @@ market_agent_dict = {}
 bid_agent_list = []
 ask_agent_list = []
 realtime_price = []
+averaged_price = []
 
-
-for index in range(60):
+for index in range(100):
     sim_id = random.randint(1, AGENTS)
     sim_style = random.choice(STYLE)
     sim_risk_appetite = random.choice(RISK)
     sim_capital = round(random.uniform(CAPITAL_LOWER, CAPITAL_UPPER), 2)
     sim_shares = round(random.uniform(SHARES_LOWER, SHARES_UPPER), 2)
     sim_bid = random.choice(BID)
-# Create agent population
+# Create random agent population
     market_agent_list.append(Agent(sim_id, sim_style, sim_risk_appetite, \
             sim_capital, sim_shares, sim_bid))
     market_agent_dict[sim_id] = [sim_style, sim_risk_appetite, sim_capital, \
@@ -169,6 +179,8 @@ for k, v in market_agent_dict.items():
 bid_price_plot_data = [p_bid[2]*-1. for p_bid in tmp_bid]
 ask_price_plot_data = [p_ask[2] for p_ask in tmp_ask]
 
+#print(ask_price_plot_data)
+
 # -----------------------------------------------------------------------------
 # bid/ask volume
 # -----------------------------------------------------------------------------
@@ -185,6 +197,16 @@ ask_price_plot_data = [p_ask[2] for p_ask in tmp_ask]
 
 bid_volume_plot_data = [v_bid[1][3]*-1. for v_bid in tmp_bid]
 ask_volume_plot_data = [v_ask[1][3] for v_ask in tmp_ask]
+#print(bid_volume_plot_data)
+
+# -----------------------------------------------------------------------------
+# bid/ask capital
+# -----------------------------------------------------------------------------
+bid_capital_plot_data = np.multiply(bid_volume_plot_data, \
+        bid_price_plot_data)
+ask_capital_plot_data = np.multiply(ask_volume_plot_data, \
+        ask_price_plot_data)
+
 
 # -----------------------------------------------------------------------------
 # Order matching & order execution 
@@ -194,51 +216,167 @@ ask_volume_plot_data = [v_ask[1][3] for v_ask in tmp_ask]
 # --- Ask: Limit price
 # --- 
 # --- Find the bid agend ID
-tmp_ask_volume_data = []
-tmp_ask_volume_data = ask_volume_plot_data.copy()
-print(tmp_ask_volume_data)
-for id_bid in range(len(bid_order_id)):
-    agent_id = bid_order_id['b'+str(id_bid)] # get bid agent ID
-    bid_shares = bid_volume_plot_data[id_bid] * -1.0
-    bid_price = bid_price_plot_data[id_bid] * -1.0
-# --- Bid market order will take any Ask price,
-    tmp_price_shares = 0.0
-    tmp_shares = 0.0
-    for id_ask in range(len(ask_order_id)):
-        ask_shares = tmp_ask_volume_data[id_ask]
-        ask_price = ask_price_plot_data[id_ask]
+#
+# Important!! Make sure you make a copy of an original list. 
+# Using [list_new] = [list_old] merely creates a reference pointing to the 
+# original list. Any operation done on the new list thus will change the 
+# content on the old!
+#
+# Attribute:
+# tmp_ask_volume: store updated Ask shares [] after order matching
+# tmp_bid_volume: store updated Bid shares [] after order matching
+#
+# Dependency:
+#   bid_order_id
+#   ask_order_id
+#   bid_volume_plot_data
+#   ask_volume_plot_data
+#   bid_price_plot_data
+#   ask_price_plot_data
+#
+# -----------------------------------------------------------------------------
+# Main time stepping loop
+# -----------------------------------------------------------------------------
+price_queuelength_old = 0 # initialized to 0  
+
+for time_step in range(5):
+    
+    tmp_bid_volume = bid_volume_plot_data.copy()
+    tmp_ask_volume = ask_volume_plot_data.copy()
+    tmp_bid_price = bid_price_plot_data.copy()
+    tmp_ask_price = ask_price_plot_data.copy()
+    tmp_bid_capital = bid_capital_plot_data.copy()
+    tmp_ask_capital = ask_capital_plot_data.copy()
+
+    realtime_price = [] # reset list to null so it only store the info for the
+                        # latest time step
+
+# ---------------------------------------------------------
+# Bid queue loop:
+#   Ask queue loop:
+#       if-elif-else block: order matching
+#
+# Bid: market order taks any Ask price
+#
+    for id_bid in range(len(bid_order_id)):
+        agent_id = bid_order_id['b'+str(id_bid)] # get bid agent ID
+        bid_shares = bid_volume_plot_data[id_bid] * -1.0
+        bid_price = bid_price_plot_data[id_bid] * -1.0
+        tmp_price_shares = 0.0 # price*shares
+        tmp_shares = 0.0
+        for id_ask in range(len(ask_order_id)):
+            ask_shares = tmp_ask_volume[id_ask]
+            ask_price = ask_price_plot_data[id_ask]
 #        print(id_bid, id_ask, bid_shares, ask_shares)
 
-        if ask_shares <= 0:
-            continue # No share available; move to the next Ask order
-        elif (bid_shares-ask_shares) <= 0:
+            if ask_shares <= 0:
+                continue # No share available; move to the next Ask order
+            elif (bid_shares-ask_shares) <= 0:
             # Bid order is totally filled at the Ask price
             # store temp number of shares
             # store temp shares*price info
             # calculate the averaged price per share
             # update the remaining shares at the current Ask index
             # add the averaged price to list for plotting 
-            tmp_shares = tmp_shares + bid_shares
-            tmp_price_shares = tmp_price_shares + bid_shares*ask_price
-            execution_price = tmp_price_shares / tmp_shares
-            tmp_ask_volume_data[id_ask] = ask_shares - bid_shares
-            realtime_price.append(execution_price)
-            break # Move to the next id_bid number of the outer loop
-        else: # Multiple Ask orders required to fill the Bid order
+                tmp_shares = tmp_shares + bid_shares
+                tmp_price_shares = tmp_price_shares + bid_shares*ask_price
+                execution_price = tmp_price_shares / tmp_shares
+                tmp_bid_volume[id_bid] = 0.0 # bid order at id_bid full filled
+                tmp_ask_volume[id_ask] = ask_shares - bid_shares
+                realtime_price.append(execution_price)
+                break # Move to the next id_bid number of the outer loop
+            else: # Multiple Ask orders required to fill the Bid order
             # bid_volume_plot_data[id_bid] is the total shares for the order
-            tmp_shares = tmp_shares + ask_shares
-            tmp_price_shares = tmp_price_shares + ask_shares*ask_price
-            bid_shares = bid_shares - ask_shares # new 'bid_shares'; decreasing
-            tmp_ask_volume_data[id_ask] = 0.0 # remove shares from current id_ask
+                tmp_shares = tmp_shares + ask_shares
+                tmp_price_shares = tmp_price_shares + ask_shares*ask_price
+                bid_shares = bid_shares - ask_shares # new 'bid_shares'; decreasing
+                tmp_ask_volume[id_ask] = 0.0 # remove shares from current id_ask
+# ---------------- End of Bid queue loop block ------------
 
+# ---------------------------------------------------------
+# Populate new bid/ask volume and price for orders that 
+# were executed
+#
+# bid_shares: remaining bid shares after order execution
+# bid_price: execution price
+# new_capital_pos: remaining money after order execution
+# ---------------------------------------------------------
+    tmp_bid_pos_active = []
+    tmp_bid_pos_close = []
+    tmp_ask_pos_active = []
+    tmp_ask_pos_close = []
  
-for idx in range(len(ask_order_id)):
-    agent_id = ask_order_id['a'+str(idx)]
-    ask_shares = ask_volume_plot_data[idx]
-    ask_price = ask_price_plot_data[idx]
-#    print(ask_shares, ask_price)
+    for idx in range(len(bid_order_id)):
+        agent_id = bid_order_id['b'+str(idx)] # {agent_id: bid_shares}
+        bid_shares = tmp_bid_volume[idx] # [shares after order execution]
+        bid_price = tmp_bid_price[idx]
+        new_bid_capital_pos = 0.0 # place holder
+        if bid_shares == 0.0:
+            new_bid_shares = -1.*round(random.uniform(SHARES_LOWER, SHARES_UPPER), 2)
+            new_bid_price = -1.*round(mean(realtime_price), 2) + \
+                round(random.uniform(-0.2, 0.2), 2)
+            tmp_bid_pos_close.append([agent_id, new_bid_shares, new_bid_price])
+        else:
+            tmp_bid_pos_active.append([agent_id, bid_shares, bid_price])
 
-print(realtime_price)
+    for idy in range(len(ask_order_id)):
+        agent_id = ask_order_id['a'+str(idy)] # {agent_id: ask_shares]
+        ask_shares = tmp_ask_volume[idy] # [ask shares after order execution]
+        ask_price = tmp_ask_price[idy]
+        if ask_shares == 0.0:
+            new_ask_shares = round(random.uniform(SHARES_LOWER, SHARES_UPPER), 2)
+            new_ask_price = round(mean(realtime_price), 2) + \
+                round(random.uniform(-0.2, 0.2), 2)
+            tmp_ask_pos_close.append([agent_id, new_ask_shares, new_ask_price])
+        else:
+            tmp_ask_pos_active.append([agent_id, ask_shares, ask_price])
+
+
+# ----------------- create averaged price list per time step ---------
+# uncomment the following 3 lines if realtime_price[] ISN'T reset at
+# each time step
+#    averaged_price.append(mean(realtime_price[-price_queuelength_old:]))
+#    price_queuelength_new = len(realtime_price)
+#    price_queuelength_old = price_queuelength_new
+    averaged_price.append(mean(realtime_price))
+    
+# ---------------------------------------------------------
+# Create new bid/ask order queues, before go back to the
+# top of the time stepping loop
+# ---------------------------------------------------------
+    if len(tmp_bid_pos_close) != len(bid_order_id):
+        print(f'Time {time_step}: Active Bid') # tmp_ask_pos_close is fully executed
+        tmp_bid_new_pos = tmp_bid_pos_active + tmp_bid_pos_close
+        tmp_ask_new_pos = tmp_ask_pos_close.copy()
+    elif len(tmp_ask_pos_close) != len(ask_order_id):
+        print(f'Time {time_step}: Active Ask') # tmp_bid_pos_close is fully executed
+        tmp_ask_new_pos = tmp_ask_pos_active + tmp_ask_pos_close
+        tmp_bid_new_pos = tmp_bid_pos_close.copy()
+    else:
+        print(f'Time {time_step}: Complete fill for both Bid & Ask')
+        tmp_full_list = tmp_bid_pos_close + tmp_ask_pos_close
+        print(tmp_full_list)
+        random.shuffle(tmp_full_list)
+
+    bid_agent_list, bid_volume_plot_data, bid_price_plot_data = \
+            OrderBook().new_agent_list(tmp_bid_new_pos)
+    ask_agent_list, ask_volume_plot_data, ask_price_plot_data = \
+            OrderBook().new_agent_list(tmp_ask_new_pos)
+
+    bid_order_id = {} 
+    ask_order_id = {}
+    bid_order_id, ask_order_id = \
+        OrderBook().order_id(bid_agent_list, ask_agent_list)
+
+# ----------------------- End of time_step loop --------------------------------
+
+# --- create new bid/ask shares
+
+# ---u create new bid/ask price
+
+# Advance Time Step, back to the loop
+
+
 
 # -----------------------------------------------------------------------------
 # Test plots
@@ -280,8 +418,44 @@ ax2.yaxis.tick_right() # place y-axis tick on the Right
 plt.xlabel('Volume (shares)')
 plt.title('Bid/Ask Volume', fontsize=15)
 
+# -------------------------------------
+# Figure 2
+# Realtime price
+# -------------------------------------
 plt.figure(2)
 plt.plot(realtime_price)
+
+
+# -------------------------------------
+# Figure 3 
+# Bid/Ask volume after order matching
+# -------------------------------------
+plt.figure(3)
+ax3 = plt.subplot(111)
+
+plt.barh([i for i in range(len(tmp_bid))], tmp_bid_volume, \
+        label='Bid', color='red')
+plt.barh([i for i in range(len(tmp_ask))], tmp_ask_volume, \
+        label='Ask', color='green')
+plt.legend(loc='best')
+#ax3.yaxis_inverted() # invert Y-Axis
+plt.gca().invert_yaxis() # reverse Y-Axis 
+#plt.gca().invert_xaxis() # reverse X-Axis
+ax3.yaxis.set_label_position('left') # place y-label on the Right
+ax3.yaxis.labelpad = 10 # adjust the label spacing -- very handy!!!
+plt.ylabel('Order Queue Depth', fontsize=12)
+plt.xlabel('Volume (shares)')
+plt.title('Bid/Ask Volume after Order Matching', fontsize=15)
+
+
+# -------------------------------------
+# Figure 4 
+# Plot averaged price time series
+# -------------------------------------
+plt.figure(4)
+plt.plot(averaged_price)
+
+
 
 
 plt.show()

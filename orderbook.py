@@ -47,10 +47,34 @@ class OrderBook:
         return(self.order_num_bid, self.order_num_ask)
 
 
+    def new_agent_list(self, new_position):
+        """
+        Create new bid/ask agent []
+
+        Attribute:
+            bid/ask order queues
+
+        Returns:
+            new agent list []
+            new order volume list []
+            new price list []
+
+        """
+        self.agent_list = []
+        self.volume_list = []
+        self.price_list = []
+
+        self.new_pos = new_position
+        self.agent_list = [v[0] for v in self.new_pos]
+        self.volume_list = [v[1] for v in self.new_pos]
+        self.price_list = [v[2] for v in self.new_pos]
+        return(self.agent_list, self.volume_list, self.price_list)
+
 
     def bid(self, bid_price, bid_size):
         self.bid_price = bid_price
         self.bid_size = bid_size
+
 
     def ask(self, ask_price, ask_size):
         self.ask_price = ask_price
