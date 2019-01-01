@@ -1,2 +1,2 @@
 # Market-Simulation
-Toy codes to simulate market
+Toy codes to simulate the market; agent-based simulation approach...
