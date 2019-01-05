@@ -235,6 +235,8 @@ ask_capital_plot_data = [c_ask[1][2] for c_ask in tmp_ask]
 # Main time stepping loop
 # -----------------------------------------------------------------------------
 price_queuelength_old = 0 # initialized to 0  
+bid_unfilled_sum = 0.0
+ask_unfilled_sum = 0.0
 
 for time_stpe in range(10):    
     tmp_bid_volume_data = bid_volume_plot_data.copy()
@@ -256,35 +258,56 @@ for time_stpe in range(10):
         agent_id = bid_order_id['b'+str(id_bid)] # get bid agent ID
         bid_shares = bid_volume_plot_data[id_bid] * -1.0
         bid_price = bid_price_plot_data[id_bid] * -1.0
+        bid_capital = bid_capital_plot_data[id_bid] * -1.0
         tmp_price_shares = 0.0 # price*shares
         tmp_shares = 0.0
+
         for id_ask in range(len(ask_order_id)):
             ask_shares = tmp_ask_volume_data[id_ask]
             ask_price = ask_price_plot_data[id_ask]
 #        print(id_bid, id_ask, bid_shares, ask_shares)
 
             if ask_shares <= 0:
-                continue # No share available; move to the next Ask order
+                continue # No share available; move on to the next Ask order
             elif (bid_shares-ask_shares) <= 0:
+# 1/4/2019
+# > add an if-else block to check Bid capital requirement
+# >
+                if (bid_shares * ask_price > bid_capital):
+                    continue # Not enough Bid capital; move on to the next Ask order
+                else:
             # Bid order is totally filled at the Ask price
-            # store temp number of shares
-            # store temp shares*price info
-            # calculate the averaged price per share
-            # update the remaining shares at the current Ask index
-            # add the averaged price to list for plotting 
-                tmp_shares = tmp_shares + bid_shares
-                tmp_price_shares = tmp_price_shares + bid_shares*ask_price
-                execution_price = tmp_price_shares / tmp_shares
-                tmp_bid_volume_data[id_bid] = 0.0 # bid order at id_bid full filled
-                tmp_ask_volume_data[id_ask] = ask_shares - bid_shares
-                realtime_price.append(execution_price)
-                break # Move to the next id_bid number of the outer loop
-            else: # Multiple Ask orders required to fill the Bid order
+            # 1) Store temp number of shares
+            # 2) Store temp shares*price info
+            # 3) Calculate the averaged price per share
+            # 4) Update the remaining shares at the current Ask index
+            # 5) Add the averaged price to list for plotting
+            # 6) Exit the Ask-loop and move to the next bid_id in the Bid-loop
+                    tmp_shares = tmp_shares + bid_shares # 1)
+                    tmp_price_shares = tmp_price_shares + bid_shares*ask_price # 2)
+                    execution_price = tmp_price_shares / tmp_shares # 3)
+                    tmp_bid_volume_data[id_bid] = 0.0 # bid order at id_bid full filled
+                    tmp_ask_volume_data[id_ask] = ask_shares - bid_shares # 4)
+                    realtime_price.append(execution_price) # 5)
+                    break # 6)
+            else: 
+            # Multiple Ask orders required to fill a single Bid order
             # bid_volume_plot_data[id_bid] is the total shares for the order
-                tmp_shares = tmp_shares + ask_shares
-                tmp_price_shares = tmp_price_shares + ask_shares*ask_price
-                bid_shares = bid_shares - ask_shares # new 'bid_shares'; decreasing
-                tmp_ask_volume_data[id_ask] = 0.0 # remove shares from current id_ask
+            # The tmp_shares sets to 0 for every new Bid_id. When starting the
+            # Ask-loop the initial result should be tmp_shares == ask_shares.
+            # Subsequent looping through the Ask-loop will increase the value of
+            # tmp_shares, untill the Bid-order is completed filled.
+# 1/4/2019
+# > add an if-else block to check Bid capital requirement
+# >
+                if (bid_shares * ask_price > bid_capital):
+                    continue
+                else:
+                    tmp_shares = tmp_shares + ask_shares
+                    tmp_price_shares = tmp_price_shares + ask_shares*ask_price
+                    bid_shares = bid_shares - ask_shares # new 'bid_shares'; decreasing
+                    tmp_ask_volume_data[id_ask] = 0.0 # remove shares from id_ask
+
 # ---------------- End of Bid queue look block ------------
 
 # ---------------------------------------------------------
@@ -331,14 +354,28 @@ for time_stpe in range(10):
 # Create new bid/ask order queues, before go back to the
 # top of the time stepping loop
 # ---------------------------------------------------------
+#
+# 1/4/2019
+# > To-do:
+# > Maybe should create a Market-maker to absorve the unfilled bid/ask orders
+# > 
     if len(tmp_bid_pos_close) != len(bid_order_id):
-        print('Active Bid') # tmp_ask_pos_close is fully executed
         tmp_bid_new_pos = tmp_bid_pos_active + tmp_bid_pos_close
         tmp_ask_new_pos = tmp_ask_pos_close.copy()
+        unfilled_bid_sum = round(sum(v[1] * -1.0 for v in tmp_bid_new_pos), 2)
+        unfilled_capital = round(unfilled_bid_sum * \
+                mean(realtime_price[-price_queuelength_old:]), 2)
+        print(f'Unfilled Bid: {unfilled_bid_sum} shares,\t${unfilled_capital}') \
+                # tmp_ask_pos_close is fully executed
     elif len(tmp_ask_pos_close) != len(ask_order_id):
-        print('Active Ask') # tmp_bid_pos_close is fully executed
         tmp_ask_new_pos = tmp_ask_pos_active + tmp_ask_pos_close
         tmp_bid_new_pos = tmp_bid_pos_close.copy()
+        unfilled_ask_sum = round(sum(v[1] for v in tmp_ask_new_pos), 2)
+        unfilled_capital = round(unfilled_ask_sum * \
+                mean(realtime_price[-price_queuelength_old:]), 2)
+        print(f'Unfilled Ask: {unfilled_ask_sum} shares,\t${unfilled_capital}') \
+                #tmp_bid_pos_close is fuly executed
+        
     else:
         print('Complete fill for both Bid & Ask')
         tmp_full_list = tmp_bid_pos_close + tmp_ask_pos_close
