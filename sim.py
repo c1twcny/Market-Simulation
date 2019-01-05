@@ -367,6 +367,17 @@ for time_stpe in range(10):
                 mean(realtime_price[-price_queuelength_old:]), 2)
         print(f'Unfilled Bid: {unfilled_bid_sum} shares,\t${unfilled_capital}') \
                 # tmp_ask_pos_close is fully executed
+# > 1/4/2019
+# > Market-maker might step in to close out all the unfilled Bid orders
+# > 1) Calculate all the remaining bid shares x bid price (b_sp)==> v[1] * v[2]
+# > 2) Market-Maker (MM) needs to make some profit: 
+# >     if unfilled_capital >= b_sp, then MM will sell at unfilled_capital to
+# >         profit the difference; the selling price will be 
+# >         mean(realtime_price[-price_queuelength_old:])
+# >         
+# >     if unfilled_capital < b_sp, then MM will sell at b_sp to profit the
+# >         the difference; the selling price will be averaged sum of the Bid price
+# > 
     elif len(tmp_ask_pos_close) != len(ask_order_id):
         tmp_ask_new_pos = tmp_ask_pos_active + tmp_ask_pos_close
         tmp_bid_new_pos = tmp_bid_pos_close.copy()
