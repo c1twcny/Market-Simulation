@@ -17,6 +17,7 @@
 # -----------------------------------------------------------------------------
 from agent import Agent
 from orderbook import OrderBook
+from market_maker import MarketMaker
 from statistics import mean
 
 import math
@@ -237,6 +238,9 @@ ask_capital_plot_data = [c_ask[1][2] for c_ask in tmp_ask]
 price_queuelength_old = 0 # initialized to 0  
 bid_unfilled_sum = 0.0
 ask_unfilled_sum = 0.0
+share_inventory = 0.0
+revenue = 0.0
+total_revenue = 0.0
 
 for time_stpe in range(10):    
     tmp_bid_volume_data = bid_volume_plot_data.copy()
@@ -323,14 +327,21 @@ for time_stpe in range(10):
         agent_id = bid_order_id['b'+str(idx)] # {agent_id: bid_shares}
         bid_shares = tmp_bid_volume_data[idx] # [shares after order execution]
         bid_price = tmp_bid_price_data[idx]
-        if bid_shares == 0.0:
+# If old Bid order is filled, create new bid order
+#   Randomly create new bid shares
+#   New bid price is the executed price plus random price between $-0.1 <> $0.1
+# Otherwise put the unfilled Bid order to active queue []
+        if bid_shares == 0.0: 
             new_bid_shares = -1.*round(random.uniform(SHARES_LOWER, SHARES_UPPER), 2)
             new_bid_price = -1.*round(mean(realtime_price), 2) + \
-                round(random.uniform(-0.2, 0.2), 2)
+                round(random.uniform(-0.1, 0.1), 2)
             tmp_bid_pos_close.append([agent_id, new_bid_shares, new_bid_price])
         else:
             tmp_bid_pos_active.append([agent_id, bid_shares, bid_price])
 
+# If old Ask order is filled, create new ask order
+#   Randomly create new ask shares
+#   New ask price is the executed price plus random price between $-0.1 <> $0.1
     for idy in range(len(ask_order_id)):
         agent_id = ask_order_id['a'+str(idy)] # {agent_id: ask_shares]
         ask_shares = tmp_ask_volume_data[idy] # [ask shares after order execution]
@@ -338,7 +349,7 @@ for time_stpe in range(10):
         if ask_shares == 0.0:
             new_ask_shares = round(random.uniform(SHARES_LOWER, SHARES_UPPER), 2)
             new_ask_price = round(mean(realtime_price), 2) + \
-                round(random.uniform(-0.2, 0.2), 2)
+                round(random.uniform(-0.1, 0.1), 2)
             tmp_ask_pos_close.append([agent_id, new_ask_shares, new_ask_price])
         else:
             tmp_ask_pos_active.append([agent_id, ask_shares, ask_price])
@@ -346,9 +357,11 @@ for time_stpe in range(10):
 #print(realtime_price)
 
 # ----------------- create averaged price list per time step ---------
+    executed_price = round(mean(realtime_price[-price_queuelength_old:]), 2)
     averaged_price.append(mean(realtime_price[-price_queuelength_old:]))
-    price_queuelength_new = len(realtime_price)
-    price_queuelength_old = price_queuelength_new
+#    price_queuelength_new = len(realtime_price)
+#    price_queuelength_old = price_queuelength_new
+    price_queuelength_old = len(realtime_price)
     
 # ---------------------------------------------------------
 # Create new bid/ask order queues, before go back to the
@@ -362,11 +375,18 @@ for time_stpe in range(10):
     if len(tmp_bid_pos_close) != len(bid_order_id):
         tmp_bid_new_pos = tmp_bid_pos_active + tmp_bid_pos_close
         tmp_ask_new_pos = tmp_ask_pos_close.copy()
+# tmp_bid_pos_close has 0 shares, thus shares in tmp_bid_new_pos represents 
+# unfilled Bid shares
         unfilled_bid_sum = round(sum(v[1] * -1.0 for v in tmp_bid_new_pos), 2)
         unfilled_capital = round(unfilled_bid_sum * \
                 mean(realtime_price[-price_queuelength_old:]), 2)
-        print(f'Unfilled Bid: {unfilled_bid_sum} shares,\t${unfilled_capital}') \
-                # tmp_ask_pos_close is fully executed
+        tmp_mm_price = round(unfilled_capital/unfilled_bid_sum, 2)
+        market_maker_price, share_inventory, revenue = \
+                MarketMaker().market_making_price(unfilled_bid_sum, tmp_mm_price, \
+                'ask', share_inventory, revenue)
+        averaged_price[-1] = market_maker_price
+        total_revenue = total_revenue + revenue
+        print(f'Unfilled Bid: ${executed_price}, ${market_maker_price}, {share_inventory}, ${revenue}') # tmp_ask_pos_close is fully executed
 # > 1/4/2019
 # > Market-maker might step in to close out all the unfilled Bid orders
 # > 1) Calculate all the remaining bid shares x bid price (b_sp)==> v[1] * v[2]
@@ -384,9 +404,13 @@ for time_stpe in range(10):
         unfilled_ask_sum = round(sum(v[1] for v in tmp_ask_new_pos), 2)
         unfilled_capital = round(unfilled_ask_sum * \
                 mean(realtime_price[-price_queuelength_old:]), 2)
-        print(f'Unfilled Ask: {unfilled_ask_sum} shares,\t${unfilled_capital}') \
-                #tmp_bid_pos_close is fuly executed
-        
+        tmp_mm_price = round(unfilled_capital/unfilled_ask_sum, 2)
+        market_maker_price, share_inventory, revenue = \
+                MarketMaker().market_making_price(unfilled_ask_sum, tmp_mm_price, \
+                'bid', share_inventory, revenue)
+        averaged_price[-1] = market_maker_price
+        total_revenue = total_revenue + revenue
+        print(f'Unfilled Ask: ${executed_price}, {market_maker_price}, {share_inventory}, ${revenue}') # tmp_bid_pos_close is fuly executed
     else:
         print('Complete fill for both Bid & Ask')
         tmp_full_list = tmp_bid_pos_close + tmp_ask_pos_close
